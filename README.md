@@ -123,14 +123,16 @@ The server will start on port 5111 (or the port specified in USER_PORT).
 
 Interactive API docs are available at:
 
-**http://localhost:5111/api-docs**
+- **Live:** https://axion-school-management-system.onrender.com/api-docs
+- **Local:** http://localhost:5111/api-docs
 
 Use it to explore all endpoints, request/response schemas, and try requests. For protected routes, get a short token via **POST /api/token/v1_createShortToken** (with long token in header `token`), then use **Authorize** and enter the short token, or send it in the `token` header for each request.
 
 ### Base URL
 
 ```
-http://localhost:5111/api
+Production: https://axion-school-management-system.onrender.com/api
+Local:      http://localhost:5111/api
 ```
 
 ### Authentication Endpoints
@@ -537,32 +539,146 @@ The following customizations were added to the base framework for this project:
 
 ## Deployment
 
+The API is deployed on **Render** with MongoDB Atlas and Upstash Redis.
+
+**Live URL:** https://axion-school-management-system.onrender.com
+
+**Swagger Docs:** https://axion-school-management-system.onrender.com/api-docs
+
+### Deploy to Render
+
+1. Push the repository to GitHub.
+
+2. Go to [render.com](https://render.com), click **New +** > **Web Service**, and connect the GitHub repo.
+
+3. Configure the service:
+
+   | Setting           | Value           |
+   | ----------------- | --------------- |
+   | **Runtime**       | Node            |
+   | **Build Command** | `npm install`   |
+   | **Start Command** | `node index.js` |
+
+4. Add the following **Environment Variables** in the Render dashboard:
+
+   | Variable             | Value                              |
+   | -------------------- | ---------------------------------- |
+   | `NODE_ENV`           | `production`                       |
+   | `SERVICE_NAME`       | `axion-school-management-system`   |
+   | `ENV`                | `production`                       |
+   | `USER_PORT`          | `5111`                             |
+   | `MONGO_URI`          | MongoDB Atlas connection string    |
+   | `REDIS_URI`          | Upstash Redis URL (`rediss://...`) |
+   | `CACHE_REDIS`        | Upstash Redis URL (`rediss://...`) |
+   | `CACHE_PREFIX`       | `axion:ch`                         |
+   | `CORTEX_REDIS`       | Upstash Redis URL (`rediss://...`) |
+   | `CORTEX_PREFIX`      | `axion`                            |
+   | `CORTEX_TYPE`        | `axion`                            |
+   | `OYSTER_REDIS`       | Upstash Redis URL (`rediss://...`) |
+   | `OYSTER_PREFIX`      | `axion`                            |
+   | `LONG_TOKEN_SECRET`  | Strong random secret               |
+   | `SHORT_TOKEN_SECRET` | Strong random secret               |
+   | `NACL_SECRET`        | Strong random secret               |
+   | `BASE_URL`           | Your Render service URL            |
+
+5. Deploy. Render auto-deploys on every push to `main`.
+
+> **Note:** The server respects `process.env.PORT` (set automatically by Render) and falls back to `USER_PORT` for local development. Upstash Redis URLs use `rediss://` (TLS).
+
 ### Production Checklist
 
-1. Set `ENV=production` in `.env`
-2. Use strong, unique secrets for tokens
-3. Configure MongoDB replica set for high availability
-4. Set up Redis cluster for caching
-5. Enable HTTPS/TLS
-6. Configure firewall rules
-7. Set up monitoring and logging
-8. Configure backup strategy
+- Use strong, unique values for `LONG_TOKEN_SECRET`, `SHORT_TOKEN_SECRET`, and `NACL_SECRET`
+- Use MongoDB Atlas with network access restricted to Render's outbound IPs
+- Use Upstash Redis with TLS enabled (`rediss://`)
+- Set `NODE_ENV=production` and `ENV=production`
+- Set `BASE_URL` to the live Render URL so Swagger UI points to the correct server
 
-### Docker Deployment (Optional)
+### Docker Deployment (Alternative)
 
-Create a `Dockerfile`:
+1. Create a `Dockerfile` in the project root:
 
 ```dockerfile
-FROM node:16-alpine
+FROM node:18-alpine
+
 WORKDIR /app
+
 COPY package*.json ./
 RUN npm ci --only=production
+
 COPY . .
+
 EXPOSE 5111
+
 CMD ["node", "index.js"]
 ```
 
-See **Security Implementation** and **Error Handling** above for full criteria.
+2. Create a `.dockerignore` file to keep the image small:
+
+```
+node_modules
+npm-debug.log
+.env
+.git
+.gitignore
+tests
+coverage
+*.md
+```
+
+3. Build and run:
+
+```bash
+docker build -t axion-school-management .
+docker run -d --name axion \
+  -p 5111:5111 \
+  --env-file .env \
+  axion-school-management
+```
+
+The API will be available at `http://localhost:5111`.
+
+4. Or use **Docker Compose** for a full local stack with MongoDB and Redis (`docker-compose.yml`):
+
+```yaml
+version: "3.8"
+
+services:
+  app:
+    build: .
+    ports:
+      - "5111:5111"
+    env_file: .env
+    depends_on:
+      - mongo
+      - redis
+    restart: unless-stopped
+
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  mongo_data:
+  redis_data:
+```
+
+When using Docker Compose locally, set your `.env` same as above:
+
+Then start everything with:
+
+```bash
+docker compose up -d
+```
 
 ## License
 
